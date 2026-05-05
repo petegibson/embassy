@@ -5,13 +5,13 @@ use embassy_stm32::ipcc::{Ipcc, IpccRxChannel, IpccTxChannel};
 use crate::channels::cpu1::IPCC_MAC_802_15_4_CMD_RSP_CHANNEL;
 use crate::cmd::CmdPacket;
 use crate::consts::TlPacketType;
-use crate::evt::{EvtBox, EvtPacket};
+use crate::evt::{self, EvtBox, EvtPacket};
 use crate::mac::commands::MacCommand;
 use crate::mac::event::MacEvent;
 use crate::mac::typedefs::MacError;
 use crate::tables::{MAC_802_15_4_CMD_BUFFER, MAC_802_15_4_NOTIF_RSP_EVT_BUFFER};
 use crate::unsafe_linked_list::LinkedListNode;
-use crate::wb::Flag;
+use crate::util::Flag;
 
 static MAC_EVT_OUT: Flag = Flag::new(false);
 
@@ -122,8 +122,6 @@ impl<'a> MacRx<'a> {
         // Return a new event box
         self.ipcc_mac_802_15_4_notification_ack_channel
             .receive(|| unsafe {
-                MAC_EVT_OUT.set_high();
-
                 Some(MacEvent::new(EvtBox::new(
                     MAC_802_15_4_NOTIF_RSP_EVT_BUFFER.as_mut_ptr() as *mut _,
                 )))
@@ -132,18 +130,28 @@ impl<'a> MacRx<'a> {
     }
 }
 
-pub(crate) unsafe fn drop_mac_event() {
-    trace!("mac drop event");
+impl<'a> evt::MemoryManager for Mac<'a> {
+    unsafe fn new_event_packet(evt: *mut EvtPacket) {
+        if ptr::eq(evt, MAC_802_15_4_NOTIF_RSP_EVT_BUFFER.as_mut_ptr() as *mut _) {
+            MAC_EVT_OUT.set_high();
+        }
+    }
 
-    // Write the ack
-    CmdPacket::write_into(
-        MAC_802_15_4_NOTIF_RSP_EVT_BUFFER.as_mut_ptr() as *mut _,
-        TlPacketType::OtAck,
-        0,
-        &[],
-    );
+    unsafe fn drop_event_packet(evt: *mut EvtPacket) {
+        if ptr::eq(evt, MAC_802_15_4_NOTIF_RSP_EVT_BUFFER.as_mut_ptr() as *mut _) {
+            trace!("mac drop event");
 
-    // Clear the rx flag
-    Ipcc::clear(IPCC_MAC_802_15_4_CMD_RSP_CHANNEL as u8);
-    MAC_EVT_OUT.set_low();
+            // Write the ack
+            CmdPacket::write_into(
+                MAC_802_15_4_NOTIF_RSP_EVT_BUFFER.as_mut_ptr() as *mut _,
+                TlPacketType::OtAck,
+                0,
+                &[],
+            );
+
+            // Clear the rx flag
+            Ipcc::clear(IPCC_MAC_802_15_4_CMD_RSP_CHANNEL as u8);
+            MAC_EVT_OUT.set_low();
+        }
+    }
 }

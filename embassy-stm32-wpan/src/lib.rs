@@ -35,3 +35,5 @@ mod wba;
 
 #[cfg(feature = "wba")]
 pub use wba::*;
+
+mod util;

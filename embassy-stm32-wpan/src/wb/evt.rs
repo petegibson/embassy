@@ -96,6 +96,7 @@ impl EvtPacket {
 }
 
 pub trait MemoryManager {
+    unsafe fn new_event_packet(_evt: *mut EvtPacket) {}
     unsafe fn drop_event_packet(evt: *mut EvtPacket);
 }
 
@@ -110,6 +111,8 @@ pub struct EvtBox<T: MemoryManager> {
 unsafe impl<T: MemoryManager> Send for EvtBox<T> {}
 impl<T: MemoryManager> EvtBox<T> {
     pub(super) fn new(ptr: *mut EvtPacket) -> Self {
+        unsafe { T::new_event_packet(ptr) };
+
         Self { ptr, mm: PhantomData }
     }
 

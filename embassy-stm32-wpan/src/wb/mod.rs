@@ -1,7 +1,5 @@
-use core::future::poll_fn;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{AtomicBool, Ordering, compiler_fence};
-use core::task::Poll;
+use core::sync::atomic::{Ordering, compiler_fence};
 
 #[cfg(any(feature = "wb-ble", feature = "wb-mac"))]
 use embassy_futures::select::{Either, select};
@@ -9,7 +7,6 @@ use embassy_hal_internal::Peri;
 use embassy_stm32::interrupt;
 use embassy_stm32::ipcc::{Config, Ipcc, IpccRxChannel, ReceiveInterruptHandler, TransmitInterruptHandler};
 use embassy_stm32::peripherals::IPCC;
-use embassy_sync::waitqueue::AtomicWaker;
 use embassy_time::{Duration, with_timeout};
 use sub::mm::MemoryManager;
 use sub::sys::Sys;
@@ -41,60 +38,6 @@ pub use crate::sub::ble::hci;
 use crate::sub::mac::Mac;
 
 type PacketHeader = LinkedListNode;
-
-#[allow(unused)]
-struct Flag {
-    state: AtomicBool,
-    waker: AtomicWaker,
-}
-
-#[allow(unused)]
-impl Flag {
-    pub const fn new(state: bool) -> Self {
-        Self {
-            state: AtomicBool::new(state),
-            waker: AtomicWaker::new(),
-        }
-    }
-
-    pub fn set_high(&self) {
-        if !self.state.swap(true, Ordering::AcqRel) {
-            self.waker.wake();
-        }
-    }
-
-    pub fn set_low(&self) {
-        if self.state.swap(false, Ordering::AcqRel) {
-            self.waker.wake();
-        }
-    }
-
-    pub async fn wait_for_high(&self) {
-        poll_fn(|cx| {
-            self.waker.register(cx.waker());
-
-            if !self.state.load(Ordering::Acquire) {
-                Poll::Pending
-            } else {
-                Poll::Ready(())
-            }
-        })
-        .await;
-    }
-
-    pub async fn wait_for_low(&self) {
-        poll_fn(|cx| {
-            self.waker.register(cx.waker());
-
-            if self.state.load(Ordering::Acquire) {
-                Poll::Pending
-            } else {
-                Poll::Ready(())
-            }
-        })
-        .await;
-    }
-}
 
 /// Transport Layer for the Mailbox interface
 pub struct TlMbox<'d> {

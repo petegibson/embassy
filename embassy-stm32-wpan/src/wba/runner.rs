@@ -38,24 +38,17 @@
 //! }
 //! ```
 
-use core::future::poll_fn;
-use core::sync::atomic::{AtomicBool, Ordering};
-use core::task::Poll;
-
 use embassy_futures::select::select;
-use embassy_sync::waitqueue::AtomicWaker;
 use embassy_time::Timer;
 
 use super::{linklayer_plat, util_seq};
+use crate::util::Flag;
 
 // BleStack_Process return values
 pub(crate) const BLE_SLEEPMODE_RUNNING: u8 = 0;
 
 /// Ble runner task initialized
-pub(crate) static BLE_INIT: AtomicBool = AtomicBool::new(false);
-
-/// Ble init waker
-pub(crate) static BLE_INIT_WAKER: AtomicWaker = AtomicWaker::new();
+pub(crate) static BLE_INIT: Flag = Flag::new(false);
 
 /// BLE stack runner function
 ///
@@ -86,16 +79,7 @@ pub(crate) static BLE_INIT_WAKER: AtomicWaker = AtomicWaker::new();
 /// ```
 pub async fn ble_runner() -> ! {
     info!("BLE runner started; waiting for BLE init");
-    poll_fn(|cx| {
-        BLE_INIT_WAKER.register(cx.waker());
-
-        if BLE_INIT.load(Ordering::Acquire) {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
-    })
-    .await;
+    BLE_INIT.wait_for_high().await;
 
     info!("BLE runner execution started");
 

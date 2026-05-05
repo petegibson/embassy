@@ -27,7 +27,7 @@ use crate::evt::{EvtBox, EvtPacket, EvtStub};
 use crate::sub::mm;
 use crate::tables::{BLE_CMD_BUFFER, BleTable, CS_BUFFER, EVT_QUEUE, HCI_ACL_DATA_BUFFER, TL_BLE_TABLE};
 use crate::unsafe_linked_list::LinkedListNode;
-use crate::wb::Flag;
+use crate::util::Flag;
 
 static ACL_EVT_OUT: Flag = Flag::new(false);
 
@@ -160,16 +160,18 @@ impl<'a> Ble<'a> {
     pub async fn acl_read(&mut self) -> EvtBox<Self> {
         ACL_EVT_OUT.wait_for_low().await;
         self.ipcc_hci_acl_rx_data_channel
-            .receive(|| unsafe {
-                ACL_EVT_OUT.set_high();
-
-                Some(EvtBox::new(HCI_ACL_DATA_BUFFER.as_mut_ptr() as *mut _))
-            })
+            .receive(|| unsafe { Some(EvtBox::new(HCI_ACL_DATA_BUFFER.as_mut_ptr() as *mut _)) })
             .await
     }
 }
 
 impl<'a> evt::MemoryManager for Ble<'a> {
+    unsafe fn new_event_packet(evt: *mut EvtPacket) {
+        if ptr::eq(evt, HCI_ACL_DATA_BUFFER.as_mut_ptr() as *mut _) {
+            ACL_EVT_OUT.set_high();
+        }
+    }
+
     /// SAFETY: passing a pointer to something other than a managed event packet is UB
     unsafe fn drop_event_packet(evt: *mut EvtPacket) {
         if ptr::eq(evt, HCI_ACL_DATA_BUFFER.as_mut_ptr() as *mut _) {
@@ -251,11 +253,7 @@ impl<'a> BleRx<'a> {
     pub async fn acl_read(&mut self) -> EvtBox<Ble<'a>> {
         ACL_EVT_OUT.wait_for_low().await;
         self.ipcc_hci_acl_rx_data_channel
-            .receive(|| unsafe {
-                ACL_EVT_OUT.set_high();
-
-                Some(EvtBox::new(HCI_ACL_DATA_BUFFER.as_mut_ptr() as *mut _))
-            })
+            .receive(|| unsafe { Some(EvtBox::new(HCI_ACL_DATA_BUFFER.as_mut_ptr() as *mut _)) })
             .await
     }
 }
